@@ -1,6 +1,7 @@
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from typing import Optional
 from room_manager import RoomManager
 from security import RateLimiter
 import secrets
@@ -23,9 +24,11 @@ app.add_middleware(
 room_manager = RoomManager()
 rate_limiter = RateLimiter()
 
+from typing import Optional
+
 class RoomSettings(BaseModel):
-    password: str = None
-    maxReceivers: int = None
+    password: Optional[str] = None
+    maxReceivers: Optional[int] = None
 
 @app.middleware("http")
 async def add_headers(request: Request, call_next):
