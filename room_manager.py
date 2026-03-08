@@ -8,10 +8,12 @@ class RoomManager:
         self.rooms: Dict[str, Dict] = {}
         self.cleanup_task = asyncio.create_task(self._cleanup_expired_rooms())
     
-    def create_room(self, room_id: str):
+    def create_room(self, room_id: str, settings: dict = None):
         self.rooms[room_id] = {
             "clients": {},
-            "created_at": time.time()
+            "created_at": time.time(),
+            "settings": settings or {},
+            "failed_attempts": []
         }
     
     def room_exists(self, room_id: str) -> bool:
@@ -60,6 +62,26 @@ class RoomManager:
                     **data,
                     "sender": sender_id
                 }, exclude=sender_id)
+    
+    def add_failed_attempt(self, room_id: str, ip: str, user_agent: str):
+        if room_id in self.rooms:
+            self.rooms[room_id]["failed_attempts"].append({
+                "ip": ip,
+                "user_agent": user_agent,
+                "timestamp": time.time()
+            })
+            return len(self.rooms[room_id]["failed_attempts"])
+        return 0
+    
+    def get_failed_attempts(self, room_id: str):
+        if room_id in self.rooms:
+            return self.rooms[room_id].get("failed_attempts", [])
+        return []
+    
+    def get_room_settings(self, room_id: str):
+        if room_id in self.rooms:
+            return self.rooms[room_id].get("settings", {})
+        return None
     
     async def _cleanup_expired_rooms(self):
         while True:
