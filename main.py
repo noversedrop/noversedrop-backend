@@ -1,15 +1,19 @@
-from fastapi import FastAPI, WebSocket, WebSocketDisconnect
+from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Request
 from fastapi.middleware.cors import CORSMiddleware
 from room_manager import RoomManager
 from security import RateLimiter
 import secrets
 import uvicorn
+import time
 
 app = FastAPI(title="NoverseDrop API", description="P2P File Transfer Signaling Server")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[
+        "https://noversedropshare.web.app",
+        "https://noversedropshare.firebaseapp.com"
+    ],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -17,6 +21,13 @@ app.add_middleware(
 
 room_manager = RoomManager()
 rate_limiter = RateLimiter()
+
+@app.middleware("http")
+async def add_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["X-Powered-By"] = "NoverseDrop"
+    response.headers["X-Server-Time"] = str(int(time.time()))
+    return response
 
 @app.get("/api/create-room")
 async def create_room():
