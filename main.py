@@ -102,6 +102,8 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     await websocket.accept()
     client_id = secrets.token_urlsafe(6)
     
+    print(f"[WS] Client {client_id} connected to room {room_id}")
+    
     if not room_manager.room_exists(room_id):
         room_manager.create_room(room_id)
     
@@ -115,8 +117,10 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str):
     try:
         while True:
             data = await websocket.receive_json()
+            print(f"[WS] Received from {client_id}: {data}")
             await room_manager.handle_message(room_id, client_id, data)
     except WebSocketDisconnect:
+        print(f"[WS] Client {client_id} disconnected from room {room_id}")
         room_manager.remove_client(room_id, client_id)
         await room_manager.broadcast(room_id, {
             "type": "peer-left",
