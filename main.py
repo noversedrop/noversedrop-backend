@@ -29,6 +29,18 @@ async def add_headers(request: Request, call_next):
     response.headers["X-Server-Time"] = str(int(time.time()))
     return response
 
+@app.get("/")
+async def root():
+    return {
+        "service": "NoverseDrop API",
+        "status": "running",
+        "version": "1.0.0",
+        "endpoints": {
+            "create_room": "/api/create-room",
+            "websocket": "/ws/{room_id}"
+        }
+    }
+
 @app.get("/api/create-room")
 async def create_room():
     room_id = secrets.token_urlsafe(8)
