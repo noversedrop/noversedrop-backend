@@ -1,20 +1,66 @@
 import time
-from typing import Dict, Set
+from typing import Dict, Set, Optional
 from fastapi import WebSocket
 import asyncio
+from collections import OrderedDict
+
+class TTLCache:
+    """Memory-efficient TTL cache with automatic cleanup"""
+    def __init__(self, max_size: int = 10000, default_ttl: int = 1800):
+        self.cache: OrderedDict = OrderedDict()
+        self.max_size = max_size
+        self.default_ttl = default_ttl
+    
+    def set(self, key: str, value: any, ttl: Optional[int] = None):
+        if len(self.cache) >= self.max_size:
+            self.cache.popitem(last=False)
+        
+        self.cache[key] = {
+            'value': value,
+            'expires_at': time.time() + (ttl or self.default_ttl)
+        }
+        self.cache.move_to_end(key)
+    
+    def get(self, key: str) -> Optional[any]:
+        if key not in self.cache:
+            return None
+        
+        item = self.cache[key]
+        if time.time() > item['expires_at']:
+            del self.cache[key]
+            return None
+        
+        self.cache.move_to_end(key)
+        return item['value']
+    
+    def delete(self, key: str):
+        if key in self.cache:
+            del self.cache[key]
+    
+    def cleanup_expired(self):
+        now = time.time()
+        expired = [k for k, v in self.cache.items() if now > v['expires_at']]
+        for key in expired:
+            del self.cache[key]
+        return len(expired)
 
 class RoomManager:
     def __init__(self):
         self.rooms: Dict[str, Dict] = {}
+        self.room_cache = TTLCache(max_size=10000, default_ttl=1800)
         self.cleanup_task = asyncio.create_task(self._cleanup_expired_rooms())
+        self.active_transfers: Dict[str, int] = {}
     
     def create_room(self, room_id: str, settings: dict = None):
-        self.rooms[room_id] = {
+        room_data = {
             "clients": {},
             "created_at": time.time(),
             "settings": settings or {},
-            "failed_attempts": []
+            "failed_attempts": [],
+            "transfer_active": False
         }
+        self.rooms[room_id] = room_data
+        self.room_cache.set(room_id, room_data)
     
     def room_exists(self, room_id: str) -> bool:
         return room_id in self.rooms
@@ -33,12 +79,19 @@ class RoomManager:
         if room_id not in self.rooms:
             return
         
+        tasks = []
         for client_id, ws in self.rooms[room_id]["clients"].items():
             if client_id != exclude:
-                try:
-                    await ws.send_json(message)
-                except:
-                    pass
+                tasks.append(self._safe_send(ws, message))
+        
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+    
+    async def _safe_send(self, ws: WebSocket, message: dict):
+        try:
+            await ws.send_json(message)
+        except Exception as e:
+            pass
     
     async def send_to_client(self, room_id: str, client_id: str, message: dict):
         if room_id in self.rooms and client_id in self.rooms[room_id]["clients"]:
@@ -87,9 +140,26 @@ class RoomManager:
         while True:
             await asyncio.sleep(60)
             current_time = time.time()
+            
+            # Cleanup rooms
             expired = [
                 room_id for room_id, room in self.rooms.items()
-                if current_time - room["created_at"] > 1800  # 30 minutes
+                if current_time - room["created_at"] > 1800 and not room.get("transfer_active")
             ]
             for room_id in expired:
-                del self.rooms[room_id]
+                await self._close_room(room_id)
+            
+            # Cleanup cache
+            cleaned = self.room_cache.cleanup_expired()
+            if cleaned > 0:
+                print(f"[Cleanup] Removed {cleaned} expired cache entries")
+    
+    async def _close_room(self, room_id: str):
+        if room_id in self.rooms:
+            for ws in self.rooms[room_id]["clients"].values():
+                try:
+                    await ws.close()
+                except:
+                    pass
+            del self.rooms[room_id]
+            self.room_cache.delete(room_id)
