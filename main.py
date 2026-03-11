@@ -32,10 +32,28 @@ class RoomSettings(BaseModel):
 
 @app.middleware("http")
 async def add_headers(request: Request, call_next):
+    # Rate limiting
+    client_ip = request.client.host
+    if not rate_limiter.is_allowed(client_ip):
+        from fastapi.responses import JSONResponse
+        return JSONResponse(
+            status_code=429,
+            content={"error": "Too many requests. Please try again later."}
+        )
+    
     response = await call_next(request)
     response.headers["X-Powered-By"] = "NoverseDrop"
     response.headers["X-Server-Time"] = str(int(time.time()))
     return response
+
+@app.on_event("startup")
+async def startup_event():
+    import asyncio
+    async def cleanup_rate_limiter():
+        while True:
+            await asyncio.sleep(300)  # Every 5 minutes
+            rate_limiter.cleanup()
+    asyncio.create_task(cleanup_rate_limiter())
 
 @app.get("/")
 async def root():
