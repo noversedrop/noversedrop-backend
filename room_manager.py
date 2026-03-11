@@ -136,6 +136,12 @@ class RoomManager:
             return self.rooms[room_id].get("settings", {})
         return None
     
+    def get_room_info(self, room_id: str):
+        """Get room information including client count and creation time"""
+        if room_id in self.rooms:
+            return self.rooms[room_id]
+        return None
+    
     async def _cleanup_expired_rooms(self):
         while True:
             await asyncio.sleep(60)
