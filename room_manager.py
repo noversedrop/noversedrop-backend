@@ -104,17 +104,22 @@ class RoomManager:
         msg_type = data.get("type")
         target = data.get("target")
         
-        if msg_type in ["offer", "answer", "ice-candidate"]:
+        # Add sender to message
+        message_with_sender = {
+            **data,
+            "sender": sender_id
+        }
+        
+        if msg_type in ["offer", "answer", "ice-candidate", "candidate"]:
             if target:
-                await self.send_to_client(room_id, target, {
-                    **data,
-                    "sender": sender_id
-                })
+                # Send to specific target
+                await self.send_to_client(room_id, target, message_with_sender)
             else:
-                await self.broadcast(room_id, {
-                    **data,
-                    "sender": sender_id
-                }, exclude=sender_id)
+                # Broadcast to all except sender
+                await self.broadcast(room_id, message_with_sender, exclude=sender_id)
+        else:
+            # Handle other message types
+            await self.broadcast(room_id, message_with_sender, exclude=sender_id)
     
     def add_failed_attempt(self, room_id: str, ip: str, user_agent: str):
         if room_id in self.rooms:
