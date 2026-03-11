@@ -73,6 +73,24 @@ async def create_room():
     room_manager.create_room(room_id)
     return {"room_id": room_id}
 
+@app.get("/api/room/{room_id}/status")
+async def check_room_status(room_id: str):
+    """Check if a room exists and is active"""
+    exists = room_manager.room_exists(room_id)
+    if exists:
+        room_info = room_manager.get_room_info(room_id)
+        return {
+            "exists": True,
+            "room_id": room_id,
+            "clients": len(room_info.get("clients", {})),
+            "created_at": room_info.get("created_at")
+        }
+    else:
+        return {
+            "exists": False,
+            "error": "Room not found or expired"
+        }
+
 @app.post("/api/room/{room_id}/password-attempt")
 async def check_password(room_id: str, request: Request, password: dict):
     settings = room_manager.get_room_settings(room_id)
